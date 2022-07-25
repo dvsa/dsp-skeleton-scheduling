@@ -4,10 +4,10 @@ import { Logger } from 'winston';
 import { LambdaHandler } from './lambdaHandler';
 import { types } from '../ioc/types';
 import { SlotService } from '../services/slots/slotService';
-import { SlotResponse, SlotUpdateRequest } from '../types/slot';
+import { SlotResponse } from '../types/slots/slotResponse';
 
 @injectable()
-export class UpdateSlot implements LambdaHandler {
+export class GetSlot implements LambdaHandler {
   constructor(
     @inject(types.logger) private logger: Logger,
     @inject(types.SlotService) private service: SlotService,
@@ -15,25 +15,19 @@ export class UpdateSlot implements LambdaHandler {
 
   async handler(event: APIGatewayProxyEvent, _: Context): Promise<APIGatewayProxyResult> {
     try {
-      const { slotId } = event.pathParameters;
+      this.logger.info('Retrieving Slot - path params', event.pathParameters);
 
-      this.logger.info(`Updating Slot ${slotId}`);
+      const slotId: string = event.pathParameters['slotId'];
 
-      if (!(await this.service.slotExistsWithId(slotId))) {
-        return {
-          statusCode: 404,
-          body: 'Slot Not Found',
-        };
-      }
+      this.logger.info('slotId', slotId);
 
-      const request: SlotUpdateRequest = JSON.parse(event.body) as SlotUpdateRequest;
-      const response: SlotResponse = await this.service.updateSlot(request, slotId);
+      const slot: SlotResponse = await this.service.getSlot(slotId);
 
-      this.logger.info(`Updated Slot ${slotId}`);
+      this.logger.info('Retrieved Slots');
 
       return {
         statusCode: 201,
-        body: JSON.stringify(response),
+        body: JSON.stringify(slot),
       };
     } catch (error) {
       this.logger.error(error);

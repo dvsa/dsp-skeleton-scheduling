@@ -4,7 +4,8 @@ import { Logger } from 'winston';
 import { LambdaHandler } from './lambdaHandler';
 import { types } from '../ioc/types';
 import { SlotService } from '../services/slots/slotService';
-import { CreateSlotRequest, SlotResponse } from '../types/slot';
+import { CreateSlotRequest } from '../types/slots/createSlotRequest';
+import { SlotResponse } from '../types/slots/slotResponse';
 
 @injectable()
 export class CreateSlot implements LambdaHandler {
@@ -14,12 +15,13 @@ export class CreateSlot implements LambdaHandler {
   ) { }
 
   async handler(event: APIGatewayProxyEvent, _: Context): Promise<APIGatewayProxyResult> {
+    const request: CreateSlotRequest = <CreateSlotRequest>JSON.parse(event.body);
     try {
-      const request: CreateSlotRequest = <CreateSlotRequest>JSON.parse(event.body);
-
       this.logger.info('creating slot', request);
 
       const slot: SlotResponse = await this.service.createOrUpdateSlot(request);
+
+      this.logger.info('successfully created slot', slot);
 
       return {
         statusCode: 201,
@@ -27,7 +29,8 @@ export class CreateSlot implements LambdaHandler {
       };
     } catch (error) {
       this.logger.error('Crash bang', error);
-      throw error;
+      this.logger.error('Error - Request', request);
+      throw error
     }
   }
 }

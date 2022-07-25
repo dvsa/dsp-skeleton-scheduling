@@ -1,22 +1,30 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
 import { inject, injectable } from 'inversify';
-import { Knex } from 'knex';
 import { Logger } from 'winston';
 import { APIGatewayProxyEventQueryStringParameters } from 'aws-lambda';
-import {
-  Slot, CreateSlotRequest, SlotResponse, SlotUpdateData, SlotUpdateRequest, GetSlotsRequest, RefServiceType,
-} from '../../types/slot';
+import { Slot, SlotUpdateData } from '../../types/slots/slot';
+import { Service } from '../../types/reference/service';
 import { types } from '../../ioc/types';
 import { RequestToSlotMapper } from '../../mappers/requestToSlotMapper';
-import { SlotsDBService } from '../db/slotsDbService';
+import { SlotsDBService } from '../db/slotsDBService';
+import { DynamicsService } from '../dynamics/dynamicsService';
+import { CreateSlotRequest } from '../../types/slots/createSlotRequest';
+import { GetSlotsRequest } from '../../types/slots/getSlotRequest';
+import { BookSlotRequest } from '../../types/slots/bookSlotRequest';
+import { SlotResponse } from '../../types/slots/slotResponse';
+import { RefSlotStatus } from '../../types/reference/slotStatus';
+import { ServiceLookup } from './serviceLookup';
+import { RefService } from '../../types/reference/service';
 
 @injectable()
 export class SlotService {
   constructor(
     @inject(types.requestToSlotMapper) private mapper: RequestToSlotMapper,
-    @inject(types.SlotsDbService) private dbService: SlotsDBService,
+    @inject(types.SlotsDBService) private dbService: SlotsDBService,
+    @inject(types.DynamicsService) private dynamicsService: DynamicsService,
+    @inject(types.ServiceLookup) private serviceLookup: ServiceLookup,
     @inject(types.logger) private logger: Logger,
-  ) {}
+  ) { }
 
   public async createOrUpdateSlot(request: CreateSlotRequest): Promise<SlotResponse> {
     if (await this.slotExistsWithId(request.SlotID)) {
@@ -33,104 +41,81 @@ export class SlotService {
 
     this.logger.info('slot to insert', slot);
 
-    await this.writeSlotToDB(slot);
+    await this.dbService.insert(slot);
 
     return this.mapper.mapToSlotResponse(slot);
   }
 
-  public async updateSlot(request: CreateSlotRequest | SlotUpdateRequest, slotId: string): Promise<SlotResponse> {
+  public async updateSlot(request: CreateSlotRequest, slotId: string): Promise<SlotResponse> {
     const slotUpdateData: SlotUpdateData = this.mapper.mapToSlotUpdateData(request);
 
-    this.logger.info('slot to update', slotUpdateData);
+    this.logger.info('slot update data', slotUpdateData);
 
-    await this.updateSlotInDb(slotUpdateData, slotId);
+    await this.dbService.update(slotUpdateData, slotId);
 
-    const slot: Slot = await this.getSlotWithId(slotId);
+    const slot: Slot = await this.dbService.getWithId(slotId);
+
+    return this.mapper.mapToSlotResponse(slot);
+  }
+
+  public async reserveSlot(slotId: string): Promise<SlotResponse> {
+    this.logger.info('Reserving slot');
+
+    await this.dynamicsService.reserveSlot(slotId)
+    await this.dbService.update({ slot_status_id: RefSlotStatus.booked_provisional }, slotId);
+
+    const slot: Slot = await this.dbService.getWithId(slotId);
+
+    return this.mapper.mapToSlotResponse(slot);
+  }
+
+  public async bookSlot(slotId: string, request: BookSlotRequest): Promise<SlotResponse> {
+    this.logger.info('Booking slot');
+
+    const slot: Slot = await this.dbService.getWithId(slotId);
+
+    const specialAccommodations: boolean = request.SpecialRequirements.length > 0
+    const extraTime: boolean = this.serviceLookup.requiresExtraTime(request.SpecialRequirements)
+    const service: RefService = this.serviceLookup.getRequiredService(request.TestType, request.ExtendedSlot, specialAccommodations, extraTime, slot.premium)
+
+    await this.dynamicsService.bookSlot(slotId, service, request)
+
+    await this.dbService.update({ slot_status_id: RefSlotStatus.booked }, slotId);
+    slot.slot_status_id = RefSlotStatus.booked
 
     return this.mapper.mapToSlotResponse(slot);
   }
 
   public async slotExistsWithId(slotId: string): Promise<boolean> {
-    return !!(await this.getSlotWithId(slotId));
+    return !!(await this.dbService.getWithId(slotId));
+  }
+
+  public async getSlot(slotId: string): Promise<SlotResponse> {
+    this.logger.info('slotId', slotId);
+
+    const slot: Slot = await this.dbService.getWithId(slotId);
+
+    this.logger.info('slot?', slot);
+
+    return this.mapper.mapToSlotResponse(slot);
   }
 
   public async getSlots(queryParams: APIGatewayProxyEventQueryStringParameters): Promise<SlotResponse[]> {
     const request: GetSlotsRequest = this.mapper.mapToGetSlotsRequest(queryParams);
 
-    this.logger.info('request');
-    this.logger.info(request);
+    this.logger.info('request', request);
 
-    const slots: Slot[] = await this.getSlotsFromDb(request);
+    const slots: Slot[] = await this.dbService.get(request);
 
-    this.logger.info('slots?');
-    this.logger.info(slots);
+    const services: Service[] = await this.dbService.getServices()
 
-    return slots.map((slot) => this.mapper.mapToSlotResponse(slot));
-  }
+    this.logger.info('slots?', slots);
+    this.logger.info('services?', services);
 
-  private async writeSlotToDB(slot: Slot): Promise<void> {
-    const knex: Knex = await this.dbService.knex();
-    const trx: Knex.Transaction = await this.getTransaction(knex);
-
-    try {
-      await knex('slot').insert(slot).transacting(trx);
-
-      await trx.commit();
-    } catch (error) {
-      await trx.rollback();
-    }
-  }
-
-  private async updateSlotInDb(slot: SlotUpdateData, slotId: string): Promise<void> {
-    const knex: Knex = await this.dbService.knex();
-    const trx: Knex.Transaction = await this.getTransaction(knex);
-
-    await knex('slot').update(slot).where('slot_id', slotId).transacting(trx);
-
-    await trx.commit();
-  }
-
-  private async getSlotWithId(slotId: string): Promise<Slot> {
-    const knex: Knex = await this.dbService.knex();
-    return knex<Slot, Slot>('slot').select().where('slot_id', slotId).first();
-  }
-
-  private async getSlotsFromDb(request: GetSlotsRequest): Promise<Slot[]> {
-    const knex: Knex = await this.dbService.knex();
-    const qb: Knex.QueryBuilder = knex<Slot, Slot[]>('slot');
-
-    this.filterSlots(request, qb);
-
-    this.logger.info(qb.where('available', true).select().toQuery());
-
-    return qb.where('available', true).select();
-  }
-
-  private filterSlots(request: GetSlotsRequest, qb: Knex.QueryBuilder) {
-    if (request.EndDate) {
-      qb.where('end_time', '<=', request.EndDate);
-    }
-
-    if (request.StartDate) {
-      qb.where('start_time', '>=', request.StartDate);
-    }
-
-    if (request.Service) {
-      qb.where('service', 'like', `%${request.Service}%`);
-    }
-
-    if (request.ServiceType) {
-      qb.where('service_type_id', RefServiceType[request.ServiceType]);
-    }
-
-    if (request.TestCentre) {
-      qb.where('test_centre', 'like', `%${request.TestCentre}%`);
-    }
-  }
-
-  private getTransaction(connection: Knex): Promise<Knex.Transaction> {
-    return new Promise<Knex.Transaction>((resolve, reject) => {
-      connection.transaction((trx: Knex.Transaction) => resolve(trx)).catch(((error) => reject(error)));
-    });
+    return slots.map((slot) => {
+      const requiredService: RefService = this.serviceLookup.getRequiredService(slot.test_type_id, request.Extended, request.SpecialAccommodations, request.ExtraTime, slot.premium)
+      const service = services.find((service) => service.service_id === requiredService)
+      return this.mapper.mapToSlotResponseFromService(slot, service)
+    })
   }
 }

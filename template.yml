@@ -2,44 +2,83 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 
 Resources:
-    CreateSlotLambdaFunction:
-      Type: 'AWS::Serverless::Function'
-      Properties:
-        CodeUri: src/handler/
-        Handler: createSlot.handler
-        Runtime: nodejs14.x
-        Events:
-          PostLambdaApi:
-            Type: Api
-            Properties:
-              Path: /
-              Method: post
+  BookSlotLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler/
+      Handler: bookSlot.handler
+      Runtime: nodejs14.x
+      Events:
+        PostLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
 
-    UpdateSlotLambdaFunction:
-      Type: 'AWS::Serverless::Function'
-      Properties:
-        CodeUri: src/handler/
-        Handler: updateSlot.handler
-        Runtime: nodejs14.x
-        Events:
-          PutLambdaApi:
-            Type: Api
-            Properties:
-              Path: /
-              Method: put
+  CreateSlotLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler/
+      Handler: createSlot.handler
+      Runtime: nodejs14.x
+      Events:
+        PostLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
 
-    GetLambdaFunction:
-      Type: 'AWS::Serverless::Function'
-      Properties:
-        CodeUri: src/handler/
-        Handler: getSlots.handler
-        Runtime: nodejs14.x
-        Events:
-          GetLambdaApi:
-            Type: Api
-            Properties:
-              Path: /
-              Method: get
+  ReserveSlotLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler/
+      Handler: reserveSlot.handler
+      Runtime: nodejs14.x
+      Events:
+        PutLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: put
+
+  ReleaseSlotLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler
+      Handler: releaseSlots.handler
+      Runtime: nodejs14.x
+      Events:
+        PutLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: put
+
+  GetSlotsLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler/
+      Handler: getSlots.handler
+      Runtime: nodejs14.x
+      Events:
+        GetLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+
+  GetSlotLambdaFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: src/handler/
+      Handler: getSlot.handler
+      Runtime: nodejs14.x
+      Events:
+        GetLambdaApi:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
 
 Outputs:
   PostLambdaApi:

@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { container } from '../ioc/container';
 import { types } from '../ioc/types';
-import { UpdateSlot } from '../apps/updateSlot';
+import { ReserveSlot } from '../apps/reserveSlot';
 
 /**
  * Lambda Handler
@@ -12,6 +12,6 @@ import { UpdateSlot } from '../apps/updateSlot';
  * @param {Context} context
  * @returns {Promise<APIGatewayProxyResult>}
 */
-const updateSlotApp: UpdateSlot = container.get<UpdateSlot>(types.UpdateSlot);
+const reserveSlotApp: ReserveSlot = container.get<ReserveSlot>(types.ReserveSlot);
 
-export const handler = (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => updateSlotApp.handler(event, context);
+export const handler = (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => reserveSlotApp.handler(event, context);

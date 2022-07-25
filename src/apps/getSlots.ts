@@ -4,7 +4,7 @@ import { Logger } from 'winston';
 import { LambdaHandler } from './lambdaHandler';
 import { types } from '../ioc/types';
 import { SlotService } from '../services/slots/slotService';
-import { Slot, SlotResponse } from '../types/slot';
+import { SlotResponse } from '../types/slots/slotResponse';
 
 @injectable()
 export class GetSlots implements LambdaHandler {
